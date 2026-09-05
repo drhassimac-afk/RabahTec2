@@ -3,9 +3,12 @@
     "name": "RabahTec",
     "slug": "RabahTec2",
     "icon": "./assets/icon.png",
-    "splash": { "image": "./assets/icon.png", "backgroundColor": "#080C16" },
     "android": {
-      "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#080C16" }
-    }
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#080C16"
+      }
+    },
+    "plugins": []
   }
 }

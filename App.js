@@ -13,6 +13,8 @@ import ChatScreen from './src/screens/ChatScreen';
 import CinemaScreen from './src/screens/CinemaScreen';
 import FilesScreen from './src/screens/FilesScreen';
 import LiveScreen from './src/screens/LiveScreen';
+import LiveCameraScreen from './src/screens/LiveCameraScreen';
+
 import GamesScreen from './src/screens/GamesScreen';
 import GameXOScreen from './src/screens/GameXOScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -68,6 +70,7 @@ export default function App() {
           <Stack.Screen name="Cinema" component={CinemaScreen} />
           <Stack.Screen name="Files" component={FilesScreen} />
           <Stack.Screen name="Live" component={LiveScreen} />
+          <Stack.Screen name="LiveCamera" component={LiveCameraScreen} />
           <Stack.Screen name="Games" component={GamesScreen} />
           <Stack.Screen name="GameXO" component={GameXOScreen} />
         </Stack.Navigator>

@@ -57,6 +57,22 @@ export default function LiveScreen({ navigation }) {
             <Ionicons name="eye" size={14} color="#fff" />
             <Text style={{ color: '#fff', fontSize: 12 }}>{viewers}</Text>
           </View>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.primary,
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+            }}
+            onPress={() => navigation.navigate('LiveCamera')}
+          >
+            <Ionicons name="videocam" size={14} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>كاميرا</Text>
+          </TouchableOpacity>
         </View>
         <Ionicons name="radio" size={60} color="rgba(255,255,255,0.25)" />
         <Text style={{ color: 'rgba(255,255,255,0.6)', marginTop: 8 }}>بث مباشر من المدينة 🌃</Text>
