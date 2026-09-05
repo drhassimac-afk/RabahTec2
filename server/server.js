@@ -19,11 +19,13 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 // ===== بيانات (في الذاكرة — يمكن ربط MongoDB لاحقاً) =====
 const rooms = [
-  { id: 'general', name: 'الغرفة العامة', type: 'chat' },
-  { id: 'chat',    name: 'غرفة الدردشة',  type: 'chat' },
-  { id: 'cinema',  name: 'غرفة السينما',  type: 'cinema' },
-  { id: 'games1',  name: 'غرفة الألعاب 1', type: 'games' },
-  { id: 'games2',  name: 'غرفة الألعاب 2', type: 'games' },
+  { id: 'general', name: 'الغرفة العامة',  type: 'chat',   cat: 'عامة'  },
+  { id: 'chat',    name: 'غرفة الدردشة',   type: 'chat',   cat: 'عامة'  },
+  { id: 'cinema',  name: 'غرفة السينما',   type: 'cinema', cat: 'ترفيه' },
+  { id: 'live',    name: 'غرفة البث',      type: 'chat',   cat: 'ترفيه' },
+  { id: 'games1',  name: 'غرفة الألعاب 1', type: 'games',  cat: 'ألعاب' },
+  { id: 'games2',  name: 'غرفة الألعاب 2', type: 'games',  cat: 'ألعاب' },
+  { id: 'study',   name: 'غرفة الدراسة',   type: 'chat',   cat: 'تعليم' },
 ];
 const members = {}, history = {};
 rooms.forEach(r => (members[r.id] = new Set()));

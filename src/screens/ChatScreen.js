@@ -1,3 +1,7 @@
+import { Linking, Alert } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { getBaseUrl } from '../socket';
+
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,7 +32,45 @@ export default function ChatScreen({ route, navigation }) {
     if (!text.trim() || !socket) return;
     socket.emit('send_message', { roomId: room.id, message: { user: user.name, userId: user.id, text: text.trim() } });
     setText('');
-  };
+  }
+const attach = async () => {
+  const res = await DocumentPicker.getDocumentAsync({
+    copyToCacheDirectory: true,
+  });
+
+  if (res.canceled) return;
+
+  const f = res.assets[0];
+  const form = new FormData();
+
+  form.append('file', {
+    uri: f.uri,
+    name: f.name,
+    type: f.mimeType || 'application/octet-stream',
+  });
+
+  try {
+    const up = await (
+      await fetch(`${getBaseUrl()}/upload`, {
+        method: 'POST',
+        body: form,
+      })
+    ).json();
+
+    socket?.emit('send_message', {
+      roomId: room.id,
+      message: {
+        user: user.name,
+        userId: user.id,
+        text: `📎 ${f.name}`,
+        file: getBaseUrl() + up.url,
+      },
+    });
+  } catch {
+    Alert.alert('خطأ', 'فشل رفع الملف');
+  }
+};
+;
 
   const renderItem = ({ item }) => {
     if (item.system) return <Text style={styles.system}>{item.text}</Text>;
@@ -36,7 +78,13 @@ export default function ChatScreen({ route, navigation }) {
     return (
       <View style={[styles.bubble, mine ? styles.mine : styles.other]}>
         {!mine && <Text style={styles.sender}>{item.user}</Text>}
-        <Text style={styles.msgText}>{item.text}</Text>
+        {item.file ? (
+          <TouchableOpacity onPress={() => Linking.openURL(item.file)}>
+            <Text style={[styles.msgText, { textDecorationLine: 'underline' }]}>{item.text}</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.msgText}>{item.text}</Text>
+        )}
         <Text style={styles.time}>{new Date(item.time).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}</Text>
       </View>
     );
@@ -75,7 +123,9 @@ export default function ChatScreen({ route, navigation }) {
           onSubmitEditing={send}
           textAlign="right"
         />
-        <Ionicons name="attach" size={22} color={colors.textDim} />
+        <TouchableOpacity onPress={attach}>
+          <Ionicons name="attach" size={22} color={colors.textDim} />
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
