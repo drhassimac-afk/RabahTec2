@@ -10,6 +10,13 @@ import { connectSocket } from './src/socket';
 import HomeScreen from './src/screens/HomeScreen';
 import RoomsScreen from './src/screens/RoomsScreen';
 import ChatScreen from './src/screens/ChatScreen';
+import CinemaScreen from './src/screens/CinemaScreen';
+import FilesScreen from './src/screens/FilesScreen';
+import LiveScreen from './src/screens/LiveScreen';
+import GamesScreen from './src/screens/GamesScreen';
+import GameXOScreen from './src/screens/GameXOScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 
 export const AppContext = createContext(null);
 const Stack = createNativeStackNavigator();
@@ -28,9 +35,9 @@ function Tabs() {
         return <Ionicons name={icons[route.name]} size={size} color={color} />;
       },
     })}>
-      <Tab.Screen name="الإعدادات" component={HomeScreen} />
-      <Tab.Screen name="الملف الشخصي" component={HomeScreen} />
       <Tab.Screen name="الرئيسية" component={HomeScreen} />
+      <Tab.Screen name="الملف الشخصي" component={ProfileScreen} />
+      <Tab.Screen name="الإعدادات" component={SettingsScreen} />
     </Tab.Navigator>
   );
 }
@@ -43,22 +50,26 @@ export default function App() {
     (async () => {
       let name = await AsyncStorage.getItem('username');
       if (!name) { name = 'مستخدم' + Math.floor(Math.random() * 1000); await AsyncStorage.setItem('username', name); }
-      const u = { id: name, name };
-      setUser(u);
-      const { socket, baseUrl } = await connectSocket(u);
+      setUser({ id: name, name });
+      const { socket, baseUrl } = await connectSocket({ id: name, name });
       setServer({ connected: !!socket, url: baseUrl });
     })();
   }, []);
 
   if (!user) return null;
   return (
-    <AppContext.Provider value={{ user, server }}>
+    <AppContext.Provider value={{ user, setUser, server }}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
       <NavigationContainer theme={navTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Tabs" component={Tabs} />
           <Stack.Screen name="Rooms" component={RoomsScreen} />
           <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="Cinema" component={CinemaScreen} />
+          <Stack.Screen name="Files" component={FilesScreen} />
+          <Stack.Screen name="Live" component={LiveScreen} />
+          <Stack.Screen name="Games" component={GamesScreen} />
+          <Stack.Screen name="GameXO" component={GameXOScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </AppContext.Provider>

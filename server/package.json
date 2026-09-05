@@ -1,10 +1,15 @@
 {
   "name": "rabahtec2-server",
   "version": "1.0.0",
-  "scripts": { "start": "node server.js" },
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "expo-notifications": "~57.0.17",
     "express": "^4.19.2",
+    "mongoose": "^9.9.5",
     "multer": "^1.4.5-lts.1",
     "socket.io": "^4.7.5"
   }
