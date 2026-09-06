@@ -10,14 +10,23 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "لتسجيل الرسائل الصوتية والبث المباشر"
-      }
+      },
+      "bitcode": false
     },
     "android": {
       "package": "com.rabahtec.app",
       "versionCode": 1,
       "permissions": [
         "RECORD_AUDIO",
-        "CAMERA"
+        "CAMERA",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -32,7 +41,14 @@
           "backgroundColor": "#080C16",
           "imageWidth": 200
         }
-      ]
-    ]
+      ],
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cd585f21-4cf1-4a0a-a961-f6143433bbc5"
+      }
+    }
   }
 }
