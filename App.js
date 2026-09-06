@@ -19,6 +19,8 @@ import GamesScreen from './src/screens/GamesScreen';
 import GameXOScreen from './src/screens/GameXOScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import AdminScreen from './src/screens/AdminScreen';
+import { Alert } from 'react-native';
 
 export const AppContext = createContext(null);
 const Stack = createNativeStackNavigator();
@@ -55,6 +57,9 @@ export default function App() {
       setUser({ id: name, name });
       const { socket, baseUrl } = await connectSocket({ id: name, name });
       setServer({ connected: !!socket, url: baseUrl });
+      if (socket) {
+  socket.on('banned', () => {
+    Alert.alert('تم حظرك 🚫', 'قام المدير بحظر حسابك من التطبيق');
     })();
   }, []);
 
@@ -73,6 +78,7 @@ export default function App() {
           <Stack.Screen name="LiveCamera" component={LiveCameraScreen} />
           <Stack.Screen name="Games" component={GamesScreen} />
           <Stack.Screen name="GameXO" component={GameXOScreen} />
+          <Stack.Screen name="Admin" component={AdminScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </AppContext.Provider>

@@ -1,8 +1,16 @@
 import { registerRootComponent } from 'expo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { applyTheme } from './src/theme';
 
-import App from './App';
+async function bootstrap() {
+  try {
+    const mode = await AsyncStorage.getItem('themeMode');
+    const accent = await AsyncStorage.getItem('themeAccent');
+    applyTheme(mode || 'dark', accent || 'blue');
+  } catch {}
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
-registerRootComponent(App);
+  const App = require('./App').default;
+  registerRootComponent(App);
+}
+
+bootstrap();

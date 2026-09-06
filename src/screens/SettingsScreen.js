@@ -1,32 +1,50 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch, Alert, DevSettings } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Updates from 'expo-updates';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { colors, accents } from '../theme';
 import { AppContext } from '../../App';
 
-export default function SettingsScreen() {
+const ACCENT_NAMES = { blue: 'أزرق', violet: 'بنفسجي', green: 'أخضر', orange: 'برتقالي', pink: 'وردي' };
+
+export default function SettingsScreen({ navigation }) {
   const { server, user } = useContext(AppContext);
   const [notifMessages, setNotifMessages] = useState(true);
   const [notifLive, setNotifLive] = useState(true);
+  const [mode, setMode] = useState('dark');
+  const [accent, setAccent] = useState('blue');
 
   useEffect(() => {
     AsyncStorage.getItem('notifMessages').then(v => v !== null && setNotifMessages(v === '1'));
     AsyncStorage.getItem('notifLive').then(v => v !== null && setNotifLive(v === '1'));
+    AsyncStorage.getItem('themeMode').then(v => v && setMode(v));
+    AsyncStorage.getItem('themeAccent').then(v => v && setAccent(v));
   }, []);
 
   const toggle = async (key, val, setter) => { setter(val); await AsyncStorage.setItem(key, val ? '1' : '0'); };
 
+  const reloadApp = async () => {
+    try { await Updates.reloadAsync(); }
+    catch { try { DevSettings.reload(); } catch {} }
+  };
+
+  const changeTheme = async (newMode, newAccent) => {
+    setMode(newMode); setAccent(newAccent);
+    await AsyncStorage.setItem('themeMode', newMode);
+    await AsyncStorage.setItem('themeAccent', newAccent);
+    await reloadApp(); // يُطبَّق الثيم عند الإقلاع قبل تحميل الشاشات
+  };
+
   const logout = () => Alert.alert('تسجيل الخروج', 'سيتم مسح اسمك وإعادة تشغيل التطبيق', [
     { text: 'إلغاء', style: 'cancel' },
-    { text: 'خروج', style: 'destructive', onPress: async () => { await AsyncStorage.removeItem('username'); DevSettings.reload(); } },
+    { text: 'خروج', style: 'destructive', onPress: async () => { await AsyncStorage.removeItem('username'); reloadApp(); } },
   ]);
 
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>الإعدادات</Text>
 
-      {/* حالة السيرفر — حقيقية */}
       <View style={styles.serverCard}>
         <Ionicons name="server" size={22} color={server.connected ? colors.success : '#EF4444'} />
         <View style={{ flex: 1, alignItems: 'flex-end' }}>
@@ -38,7 +56,37 @@ export default function SettingsScreen() {
 
       <Text style={styles.section}>الحساب</Text>
       <Row icon="person" color={colors.primary} label={`الاسم: ${user.name}`} />
-      <Row icon="moon" color={colors.purple} label="المظهر: داكن" value="داكن" />
+
+      {/* ===== المظهر ===== */}
+      <Text style={styles.section}>المظهر</Text>
+      <View style={styles.row}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {[{ k: 'light', l: 'فاتح', icon: 'sunny' }, { k: 'dark', l: 'داكن', icon: 'moon' }].map(m => (
+            <TouchableOpacity key={m.k}
+              style={[styles.modeBtn, mode === m.k && { backgroundColor: colors.primary }]}
+              onPress={() => changeTheme(m.k, accent)}>
+              <Ionicons name={m.icon} size={14} color={mode === m.k ? '#fff' : colors.textDim} />
+              <Text style={{ color: mode === m.k ? '#fff' : colors.textDim, fontSize: 12, fontWeight: 'bold' }}>{m.l}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={styles.rowLabel}>نمط العرض</Text>
+        <Ionicons name="contrast" size={20} color={colors.purple} />
+      </View>
+
+      <View style={styles.row}>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {Object.keys(accents).map(k => (
+            <TouchableOpacity key={k} onPress={() => changeTheme(mode, k)}
+              style={[styles.accentDot, { backgroundColor: accents[k].primary }, accent === k && styles.accentActive]}>
+              {accent === k && <Ionicons name="checkmark" size={14} color="#fff" />}
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={styles.rowLabel}>لون التطبيق ({ACCENT_NAMES[accent]})</Text>
+        <Ionicons name="color-palette" size={20} color={colors.cyan} />
+      </View>
+
       <Row icon="language" color={colors.cyan} label="اللغة" value="العربية" />
 
       <Text style={styles.section}>الإشعارات</Text>
@@ -54,6 +102,11 @@ export default function SettingsScreen() {
       </View>
 
       <Text style={styles.section}>أخرى</Text>
+      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Admin')}>
+        <Ionicons name="chevron-back" size={18} color={colors.textDim} />
+        <Text style={styles.rowLabel}>لوحة تحكم المدير 🛡️</Text>
+        <Ionicons name="shield-checkmark" size={20} color="#F59E0B" />
+      </TouchableOpacity>
       <Row icon="help-circle" color={colors.cyan} label="مساعدة ودعم" />
       <Row icon="information-circle" color={colors.textDim} label="عن التطبيق" value="RabahTec v1.0" />
 
@@ -84,5 +137,8 @@ const styles = StyleSheet.create({
   section: { color: colors.textDim, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginTop: 22, marginBottom: 8 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.card, borderRadius: 14, padding: 15, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
   rowLabel: { color: colors.text, fontSize: 14, flex: 1, textAlign: 'right', marginRight: 10 },
+  modeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: colors.cardAlt },
+  accentDot: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  accentActive: { borderWidth: 2, borderColor: '#fff' },
   logoutBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 14, padding: 15, marginTop: 24, borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' },
 });
