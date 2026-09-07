@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Linking, Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync } from 'expo-audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 import { getSocket, getBaseUrl } from '../socket';
@@ -27,6 +27,7 @@ export default function ChatScreen({ route, navigation }) {
   const listRef = useRef();
   const recTimer = useRef(null);
   const socket = getSocket();
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
   useEffect(() => {
     AsyncStorage.getItem('adminKey').then(k => setIsAdmin(!!k));
@@ -78,31 +79,85 @@ export default function ChatScreen({ route, navigation }) {
   // ===== التسجيل الصوتي =====
   const startRec = async () => {
     try {
-      const p = await Audio.requestPermissionsAsync();
-      if (!p.granted) return Alert.alert('إذن مرفوض', 'اسمح بالوصول للمايكروفون من الإعدادات');
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      setRec(recording);
-      setRecSec(0);
-      recTimer.current = setInterval(() => setRecSec(s => s + 1), 1000);
-    } catch {}
-  };
-  const cancelRec = async () => { clearInterval(recTimer.current); try { await rec?.stopAndUnloadAsync(); } catch {} setRec(null); };
+    const p = await requestRecordingPermissionsAsync();
+
+    if (!p.granted) {
+      return Alert.alert(
+        'إذن مرفوض',
+        'اسمح بالوصول للمايكروفون من الإعدادات'
+      );
+    }
+
+    await audioRecorder.prepareToRecordAsync();
+    audioRecorder.record();
+
+    setRec(audioRecorder);
+    setRecSec(0);
+
+    recTimer.current = setInterval(
+      () => setRecSec(s => s + 1),
+      1000
+    );
+  } catch (e) {
+    console.log('Recording error:', e);
+    Alert.alert('خطأ', 'تعذر بدء التسجيل الصوتي');
+  }
+};
+  const cancelRec = async () => {
+  clearInterval(recTimer.current);
+
+  try {
+    await audioRecorder.stop();
+  } catch {}
+
+  setRec(null);
+};
   const sendRec = async () => {
-    clearInterval(recTimer.current);
-    try {
-      await rec.stopAndUnloadAsync();
-      const uri = rec.getURI();
-      const dur = recSec;
-      setRec(null);
-      const form = new FormData();
-      form.append('file', { uri, name: `voice-${Date.now()}.m4a`, type: 'audio/m4a' });
-      const up = await (await fetch(`${getBaseUrl()}/upload`, { method: 'POST', body: form })).json();
-      socket?.emit('send_message', { roomId: room.id, message: buildMsg({ text: '', audio: getBaseUrl() + up.url, duration: dur }) });
-      bump('messages');
-      setReplyingTo(null);
-    } catch { Alert.alert('خطأ', 'فشل إرسال الرسالة الصوتية'); }
-  };
+  clearInterval(recTimer.current);
+
+  try {
+    await audioRecorder.stop();
+
+    const uri = audioRecorder.uri;
+    const dur = recSec;
+
+    setRec(null);
+
+    if (!uri) {
+      return Alert.alert('خطأ', 'لم يتم إنشاء التسجيل الصوتي');
+    }
+
+    const form = new FormData();
+
+    form.append('file', {
+      uri,
+      name: `voice-${Date.now()}.m4a`,
+      type: 'audio/m4a',
+    });
+
+    const up = await (
+      await fetch(`${getBaseUrl()}/upload`, {
+        method: 'POST',
+        body: form,
+      })
+    ).json();
+
+    socket?.emit('send_message', {
+      roomId: room.id,
+      message: buildMsg({
+        text: '',
+        audio: getBaseUrl() + up.url,
+        duration: dur,
+      }),
+    });
+
+    bump('messages');
+    setReplyingTo(null);
+  } catch (e) {
+    console.log('Send recording error:', e);
+    Alert.alert('خطأ', 'فشل إرسال الرسالة الصوتية');
+  }
+};
 
   // ===== الضغط المطوّل: رد + حذف =====
   const onLongPress = (item) => {

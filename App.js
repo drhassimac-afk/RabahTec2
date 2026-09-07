@@ -63,6 +63,8 @@ export default function App() {
   socket.on('banned', () => {
     Alert.alert('تم حظرك 🚫', 'قام المدير بحظر حسابك من التطبيق');
     });
+  }
+  })();
   }, []);
 
   if (!user) return null;

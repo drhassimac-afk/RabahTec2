@@ -50,7 +50,11 @@
           "cameraPermission": "يحتاج التطبيق الوصول للكاميرا من أجل البث المباشر",
           "microphonePermission": "يحتاج التطبيق الوصول للمايكروفون من أجل البث المباشر والرسائل الصوتية"
         }
-      ]
+      ],
+      "expo-audio",
+      "expo-video",
+      "expo-font",
+      "expo-asset"
     ],
     "extra": {
       "eas": {
