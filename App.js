@@ -21,6 +21,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import { Alert } from 'react-native';
+import { notify } from './src/notifications';
 import LeaderboardScreen from './src/screens/LeaderboardScreen';
 
 export const AppContext = createContext(null);
@@ -53,33 +54,48 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      let name = await AsyncStorage.getItem('username');
+      let name;
 
-      if (!name) {
+      try {
+        name = await AsyncStorage.getItem('username');
+
+        if (!name) {
+          name = 'مستخدم' + Math.floor(Math.random() * 1000);
+          await AsyncStorage.setItem('username', name);
+        }
+      } catch (e) {
+        console.error('❌ خطأ فـ تهيئة المستخدم (AsyncStorage):', e?.message || e);
         name = 'مستخدم' + Math.floor(Math.random() * 1000);
-        await AsyncStorage.setItem('username', name);
       }
 
       // عرض التطبيق فورًا وعدم جعل اتصال السيرفر شرطًا للإقلاع
       setUser({ id: name, name });
 
       // الاتصال بالسيرفر في الخلفية
-      connectSocket({ id: name, name }).then(({ socket, baseUrl }) => {
-        setServer({ connected: !!socket, url: baseUrl });
+      try {
+        connectSocket({ id: name, name })
+          .then(({ socket, baseUrl }) => {
+            setServer({ connected: !!socket, url: baseUrl });
 
-        if (socket) {
-          socket.on('achievement', (a) =>
-            notify('🏆 إنجاز جديد!', `حصلت على: ${a.name}`)
-          );
+            if (socket) {
+              socket.on('achievement', (a) =>
+                notify('🏆 إنجاز جديد!', `حصلت على: ${a.name}`)
+              );
 
-          socket.on('banned', () => {
-            Alert.alert(
-              'تم حظرك 🚫',
-              'قام المدير بحظرك من التطبيق'
-            );
+              socket.on('banned', () => {
+                Alert.alert(
+                  'تم حظرك 🚫',
+                  'قام المدير بحظرك من التطبيق'
+                );
+              });
+            }
+          })
+          .catch((e) => {
+            console.error('❌ خطأ فـ الاتصال بالسيرفر:', e?.message || e);
           });
-        }
-      });
+      } catch (e) {
+        console.error('❌ خطأ فـ connectSocket:', e?.message || e);
+      }
     })();
   }, []);
 
