@@ -54,33 +54,17 @@ export default function App() {
   useEffect(() => {
     (async () => {
       let name = await AsyncStorage.getItem('username');
-
-      if (!name) {
-        name = 'مستخدم' + Math.floor(Math.random() * 1000);
-        await AsyncStorage.setItem('username', name);
-      }
-
-      // عرض التطبيق فورًا وعدم جعل اتصال السيرفر شرطًا للإقلاع
+      if (!name) { name = 'مستخدم' + Math.floor(Math.random() * 1000); await AsyncStorage.setItem('username', name); }
       setUser({ id: name, name });
-
-      // الاتصال بالسيرفر في الخلفية
-      connectSocket({ id: name, name }).then(({ socket, baseUrl }) => {
-        setServer({ connected: !!socket, url: baseUrl });
-
-        if (socket) {
-          socket.on('achievement', (a) =>
-            notify('🏆 إنجاز جديد!', `حصلت على: ${a.name}`)
-          );
-
-          socket.on('banned', () => {
-            Alert.alert(
-              'تم حظرك 🚫',
-              'قام المدير بحظرك من التطبيق'
-            );
-          });
-        }
-      });
-    })();
+      const { socket, baseUrl } = await connectSocket({ id: name, name });
+      setServer({ connected: !!socket, url: baseUrl });
+      if (socket) {
+  socket.on('achievement', (a) => notify('🏆 إنجاز جديد!', `حصلت على: ${a.name}`));
+  socket.on('banned', () => {
+    Alert.alert('تم حظرك 🚫', 'قام المدير بحظر حسابك من التطبيق');
+    });
+  }
+  })();
   }, []);
 
   if (!user) return null;
