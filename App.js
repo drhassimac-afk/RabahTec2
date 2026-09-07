@@ -21,6 +21,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import AdminScreen from './src/screens/AdminScreen';
 import { Alert } from 'react-native';
+import LeaderboardScreen from './src/screens/LeaderboardScreen';
 
 export const AppContext = createContext(null);
 const Stack = createNativeStackNavigator();
@@ -58,6 +59,7 @@ export default function App() {
       const { socket, baseUrl } = await connectSocket({ id: name, name });
       setServer({ connected: !!socket, url: baseUrl });
       if (socket) {
+  socket.on('achievement', (a) => notify('🏆 إنجاز جديد!', `حصلت على: ${a.name}`));
   socket.on('banned', () => {
     Alert.alert('تم حظرك 🚫', 'قام المدير بحظر حسابك من التطبيق');
     })();
@@ -69,6 +71,7 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
       <NavigationContainer theme={navTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
           <Stack.Screen name="Tabs" component={Tabs} />
           <Stack.Screen name="Rooms" component={RoomsScreen} />
           <Stack.Screen name="Chat" component={ChatScreen} />

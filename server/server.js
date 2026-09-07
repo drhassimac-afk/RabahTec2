@@ -125,8 +125,8 @@ const rooms = [
   { id: 'games2',  name: 'غرفة الألعاب 2', type: 'games',  cat: 'ألعاب' },
   { id: 'study',   name: 'غرفة الدراسة',   type: 'chat',   cat: 'تعليم' },
 ];
-const members = {}, history = {};
-rooms.forEach(r => (members[r.id] = new Set()));
+const members = {}, history = {}, xoGames = {};
+rooms.forEach(r => (members[r.id] = new Map()));
 mongoose.connection.once('open', async () => {
   try {
     const custom = await Room.find().lean();
@@ -141,7 +141,7 @@ mongoose.connection.once('open', async () => {
           password: r.password || null,
           createdBy: r.createdBy
         });
-        members[r.id] = new Set();
+        members[r.id] = new Map();
       }
     });
 
@@ -162,6 +162,51 @@ const roomsPayload = () => rooms.map(r => ({
   locked: !!r.password,
   online: members[r.id]?.size || 0,
 }));
+
+// ===== النقاط والإنجازات 🏆 =====
+const ACHIEVEMENTS = [
+  { id: 'first_msg', name: 'أول رسالة 💬', points: 1 },
+  { id: 'active',    name: 'عضو نشط ⚡',    points: 20 },
+  { id: 'chatty',    name: 'ثرثار 🗣️',      points: 50 },
+  { id: 'social',    name: 'اجتماعي 🌟',    points: 100 },
+  { id: 'legend',    name: 'أسطورة 👑',     points: 500 },
+];
+
+async function awardPoints(username, pts) {
+  if (!dbReady() || !username) return;
+
+  try {
+    const u = await User.findOneAndUpdate(
+      { id: username },
+      { $inc: { points: pts } },
+      { new: true, upsert: true }
+    );
+
+    const earned = ACHIEVEMENTS.filter(
+      a =>
+        u.points >= a.points &&
+        !(u.achievements || []).includes(a.id)
+    );
+
+    if (earned.length) {
+      await User.updateOne(
+        { id: username },
+        {
+          $addToSet: {
+            achievements: {
+              $each: earned.map(a => a.id),
+            },
+          },
+        }
+      );
+
+      earned.forEach(a =>
+        io.to('user-' + username).emit('achievement', a)
+      );
+    }
+  } catch {}
+}
+
 
 // ===== REST API =====
 
@@ -373,7 +418,7 @@ app.post('/rooms/create', async (req, res) => {
   };
 
   rooms.push(room);
-  members[id] = new Set();
+  members[id] = new Map();
 
   if (dbReady()) await Room.create(room).catch(() => {});
 
@@ -412,13 +457,14 @@ app.get('/users/search', async (req, res) => {
     const users = await User.find({
       name: { $regex: q, $options: 'i' }
     })
-      .select('id name')
+      .select('id name avatar')
       .limit(20)
       .lean();
 
     res.json(users.map(u => ({
       id: u.id,
-      username: u.name
+      username: u.name,
+      avatar: u.avatar || null
     })));
   } catch (err) {
     console.error('❌ User search error:', err.message);
@@ -535,15 +581,148 @@ app.get('/friends/:username', async (req, res) => {
     const users = await User.find({
       name: { $in: names }
     })
-      .select('id name')
+      .select('id name avatar')
       .lean();
 
     res.json(users.map(u => ({
       id: u.id,
-      username: u.name
+      username: u.name,
+      avatar: u.avatar || null
     })));
   } catch (err) {
     res.status(500).json({ error: 'تعذر جلب الأصدقاء' });
+  }
+});
+
+// ===== البحث في الرسائل 🔍 =====
+app.get('/messages/search', async (req, res) => {
+  try {
+    const { roomId, q } = req.query;
+    if (!q?.trim()) return res.json([]);
+
+    const regex = new RegExp(
+      String(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'i'
+    );
+
+    const mapDoc = d => ({
+      id: String(d._id || d.id),
+      userId: d.userId,
+      user: d.user,
+      text: d.text,
+      file: d.file,
+      audio: d.audio,
+      duration: d.duration,
+      replyTo: d.replyTo,
+      time: d.time
+    });
+
+    if (dbReady()) {
+      const docs = await Message.find({
+        roomId,
+        text: regex
+      })
+        .sort({ time: -1 })
+        .limit(50)
+        .lean();
+
+      return res.json(docs.reverse().map(mapDoc));
+    }
+
+    return res.json(
+      (history[roomId] || [])
+        .filter(m => m.text && regex.test(m.text))
+        .slice(-50)
+        .map(mapDoc)
+    );
+  } catch {
+    res.status(500).json({ error: 'فشل البحث' });
+  }
+});
+
+// ===== رفع الصورة الشخصية 🖼️ =====
+app.post('/users/avatar', upload.single('file'), async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username || !req.file) {
+      return res.status(400).json({ error: 'البيانات ناقصة' });
+    }
+
+    const url = `/uploads/${req.file.filename}`;
+
+    if (dbReady()) {
+      await User.updateOne(
+        { id: username },
+        {
+          $set: {
+            avatar: url,
+            name: username
+          },
+          $setOnInsert: {
+            id: username
+          }
+        },
+        { upsert: true }
+      ).catch(() => {});
+    }
+
+    io.emit('avatar_updated', { username, url });
+
+    res.json({ url });
+  } catch {
+    res.status(500).json({ error: 'فشل رفع الصورة' });
+  }
+});
+
+// ===== الملف الشخصي (نقاط + إنجازات) =====
+app.get('/users/:username/profile', async (req, res) => {
+  try {
+    const username = req.params.username;
+
+    if (!dbReady()) {
+      return res.json({
+        points: 0,
+        achievements: [],
+        avatar: null,
+        friends: 0
+      });
+    }
+
+    const u = await User.findOne({ id: username }).lean();
+
+    res.json({
+      points: u?.points || 0,
+      achievements: u?.achievements || [],
+      avatar: u?.avatar || null,
+      friends: u?.friends?.length || 0
+    });
+  } catch {
+    res.status(500).json({ error: 'فشل تحميل الملف الشخصي' });
+  }
+});
+
+// ===== المتصدرون 🏆 =====
+app.get('/leaderboard', async (req, res) => {
+  try {
+    if (!dbReady()) return res.json([]);
+
+    const users = await User.find({
+      points: { $gt: 0 }
+    })
+      .sort({ points: -1 })
+      .limit(20)
+      .lean();
+
+    res.json(
+      users.map(u => ({
+        username: u.id,
+        points: u.points || 0,
+        avatar: u.avatar || null
+      }))
+    );
+  } catch {
+    res.status(500).json({ error: 'فشل تحميل المتصدرين' });
   }
 });
 
@@ -591,8 +770,8 @@ io.on('connection', socket => {
     socket.join(roomId);
     socket.data = { roomId, user };
 
-    if (!members[roomId]) members[roomId] = new Set();
-    members[roomId].add(user.id);
+    if (!members[roomId]) members[roomId] = new Map();
+    members[roomId].set(user.id, user.name);
 
     io.emit('rooms_update', roomsPayload());
 
@@ -656,10 +835,99 @@ io.on('connection', socket => {
       }
     }
 
+    await awardPoints(message.user, message.file || message.audio ? 2 : 1);
+
     io.to(roomId).emit('new_message', msg);
   });
 
   // مزامنة الفيديو (السينما): تشغيل / إيقاف / تقديم
+  // ===== لعبة XO =====
+  socket.on('xo_join', ({ roomId, user }) => {
+    socket.join('xo-' + roomId);
+
+    const g = xoGames[roomId] = xoGames[roomId] || {
+      board: Array(9).fill(null),
+      players: [],
+      turn: 'X',
+      winner: null
+    };
+
+    if (!g.players.find(p => p.id === user.id) && g.players.length < 2) {
+      g.players.push({
+        id: user.id,
+        name: user.name,
+        symbol: g.players.length ? 'O' : 'X'
+      });
+    }
+
+    io.to('xo-' + roomId).emit('xo_state', g);
+  });
+
+  socket.on('xo_move', ({ roomId, user, index }) => {
+    const g = xoGames[roomId];
+    if (!g || g.winner) return;
+
+    const p = g.players.find(p => p.id === user.id);
+    if (!p || p.symbol !== g.turn || g.board[index]) return;
+
+    g.board[index] = p.symbol;
+    g.turn = g.turn === 'X' ? 'O' : 'X';
+
+    const L = [
+      [0,1,2], [3,4,5], [6,7,8],
+      [0,3,6], [1,4,7], [2,5,8],
+      [0,4,8], [2,4,6]
+    ];
+
+    for (const [a,b,c] of L) {
+      if (
+        g.board[a] &&
+        g.board[a] === g.board[b] &&
+        g.board[a] === g.board[c]
+      ) {
+        g.winner = g.board[a];
+      }
+    }
+
+    if (!g.winner && g.board.every(Boolean)) {
+      g.winner = 'draw';
+    }
+
+    if (g.winner && g.winner !== 'draw') {
+      const w = g.players.find(p => p.symbol === g.winner);
+      if (w) awardPoints(w.name, 10);
+    }
+
+    io.to('xo-' + roomId).emit('xo_state', g);
+  });
+
+  socket.on('xo_reset', ({ roomId }) => {
+    const g = xoGames[roomId];
+    if (!g) return;
+
+    g.board = Array(9).fill(null);
+    g.turn = 'X';
+    g.winner = null;
+
+    io.to('xo-' + roomId).emit('xo_state', g);
+  });
+
+  socket.on('xo_leave', ({ roomId, user }) => {
+    const g = xoGames[roomId];
+
+    if (g) {
+      g.players = g.players.filter(p => p.id !== user.id);
+      g.players.forEach((p, i) => p.symbol = i ? 'O' : 'X');
+      g.board = Array(9).fill(null);
+      g.turn = 'X';
+      g.winner = null;
+
+      io.to('xo-' + roomId).emit('xo_state', g);
+    }
+
+    socket.leave('xo-' + roomId);
+  });
+
   socket.on('video_action', ({ roomId, action, position }) => {
     socket.to(roomId).emit('video_sync', { action, position, by: socket.data.user?.name });
   });
@@ -669,6 +937,7 @@ io.on('connection', socket => {
     if (roomId && user) {
       members[roomId]?.delete(user.id);
       io.emit('rooms_update', roomsPayload());
+      io.to(roomId).emit('room_members', Array.from(members[roomId]?.values() || []));
       socket.to(roomId).emit('system_message', { text: `${user.name} غادر الغرفة` });
     }
   };

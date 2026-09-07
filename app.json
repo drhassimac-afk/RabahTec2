@@ -9,7 +9,8 @@
       "buildNumber": "1",
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "لتسجيل الرسائل الصوتية والبث المباشر"
+        "NSMicrophoneUsageDescription": "لتسجيل الرسائل الصوتية والبث المباشر",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bitcode": false
     },

@@ -1,11 +1,24 @@
 import React, { useContext, useEffect, useState, useCallback } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, Alert, ScrollView, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { getBaseUrl, getSocket } from '../socket';
 import { AppContext } from '../../App';
 
 export const dmId = (a, b) => 'dm-' + [a, b].sort().join('--');
+
+const Avatar = ({ user, color }) => (
+  user.avatar ? (
+    <Image
+      source={{ uri: getBaseUrl() + user.avatar }}
+      style={{ width: 36, height: 36, borderRadius: 18 }}
+    />
+  ) : (
+    <View style={styles.avatar}>
+      <Ionicons name="person" size={16} color={color} />
+    </View>
+  )
+);
 
 export default function FriendsScreen({ navigation }) {
   const { user } = useContext(AppContext);
@@ -84,7 +97,7 @@ export default function FriendsScreen({ navigation }) {
             <Text style={styles.addText}>إضافة</Text>
           </TouchableOpacity>
           <Text style={styles.rowName}>{r.username}</Text>
-          <View style={styles.avatar}><Ionicons name="person" size={16} color={colors.cyan} /></View>
+          <Avatar user={r} color={colors.cyan} />
         </View>
       ))}
 
@@ -97,7 +110,7 @@ export default function FriendsScreen({ navigation }) {
             <Text style={styles.addText}>قبول</Text>
           </TouchableOpacity>
           <Text style={styles.rowName}>{r.from}</Text>
-          <View style={styles.avatar}><Ionicons name="person" size={16} color={colors.purple} /></View>
+          <Avatar user={r} color={colors.purple} />
         </View>
       ))}
 
@@ -110,7 +123,7 @@ export default function FriendsScreen({ navigation }) {
             <Text style={[styles.addText, { color: colors.primary }]}>دردشة</Text>
           </View>
           <Text style={styles.rowName}>{f.username}</Text>
-          <View style={styles.avatar}><Ionicons name="person" size={16} color={colors.primary} /></View>
+          <Avatar user={f} color={colors.primary} />
         </TouchableOpacity>
       ))}
       {friends.length === 0 && (

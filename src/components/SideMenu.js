@@ -12,6 +12,7 @@ const DrawerContext = createContext(null);
 export const useDrawer = () => useContext(DrawerContext);
 
 const ITEMS = [
+  { icon: 'trophy', label: 'المتصدرون', go: { type: 'screen', name: 'Leaderboard' } },
   { icon: 'home',            label: 'الرئيسية',      go: { type: 'tab',    name: 'الرئيسية' } },
   { icon: 'people',          label: 'الغرف',         go: { type: 'screen', name: 'Rooms' } },
   { icon: 'heart',           label: 'الأصدقاء',      go: { type: 'screen', name: 'Friends' } },
