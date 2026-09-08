@@ -25,6 +25,7 @@ export default function FriendsScreen({ navigation }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [friends, setFriends] = useState([]);
+  const [online, setOnline] = useState([]);
   const [requests, setRequests] = useState([]);
   const base = getBaseUrl();
   const me = encodeURIComponent(user.name);
@@ -39,9 +40,15 @@ export default function FriendsScreen({ navigation }) {
   useEffect(() => {
     load();
     const s = getSocket();
+    s?.emit('get_presence');
+    s?.on('presence', setOnline);
     s?.on('friend_request', load);
     s?.on('friend_accepted', load);
-    return () => { s?.off('friend_request'); s?.off('friend_accepted'); };
+    return () => {
+      s?.off('presence');
+      s?.off('friend_request');
+      s?.off('friend_accepted');
+    };
   }, []);
 
   const search = async (q) => {
@@ -122,7 +129,9 @@ export default function FriendsScreen({ navigation }) {
             <Ionicons name="chatbubbles" size={14} color={colors.primary} />
             <Text style={[styles.addText, { color: colors.primary }]}>دردشة</Text>
           </View>
-          <Text style={styles.rowName}>{f.username}</Text>
+          <Text style={styles.rowName}>
+            {f.username} {online.includes(f.username) && '🟢'}
+          </Text>
           <Avatar user={f} color={colors.primary} />
         </TouchableOpacity>
       ))}

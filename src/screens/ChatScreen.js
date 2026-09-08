@@ -2,13 +2,15 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Linking, Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync } from 'expo-audio';
+import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 import { getSocket, getBaseUrl } from '../socket';
 import { AppContext } from '../../App';
 import { bump } from '../stats';
 import VoiceMessage from '../components/VoiceMessage';
+
+const EMOJIS = ['❤️', '👍', '😂', '🔥', '😮', '😢'];
 
 export default function ChatScreen({ route, navigation }) {
   const { room, password } = route.params;
@@ -24,35 +26,88 @@ export default function ChatScreen({ route, navigation }) {
   const [searchMode, setSearchMode] = useState(false);
   const [searchQ, setSearchQ] = useState('');
   const [searchResults, setSearchResults] = useState(null);
+  const [typingUsers, setTypingUsers] = useState({});
+  const [readUpTo, setReadUpTo] = useState(0);
+  const [actionMsg, setActionMsg] = useState(null);
+  const [onlineList, setOnlineList] = useState([]);
+  const [peerStatus, setPeerStatus] = useState(null);
+
   const listRef = useRef();
   const recTimer = useRef(null);
+  const typingTimers = useRef({});
+  const lastTypingSent = useRef(0);
   const socket = getSocket();
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  const isDM = room.id.startsWith('dm-');
+  const peer = isDM ? room.id.slice(3).split('--').find(n => n !== user.name) : null;
 
   useEffect(() => {
     AsyncStorage.getItem('adminKey').then(k => setIsAdmin(!!k));
     bump('rooms');
     socket?.emit('join_room', { roomId: room.id, user, password });
+    socket?.emit('get_presence');
+    socket?.emit('mark_read', { roomId: room.id });
+
     socket?.on('room_history', h => setMessages(h));
-    socket?.on('new_message', m => setMessages(p => [...p, m]));
+    socket?.on('new_message', m => {
+      setMessages(p => [...p, m]);
+      socket?.emit('mark_read', { roomId: room.id });
+    });
     socket?.on('system_message', s => setMessages(p => [...p, { id: Date.now() + Math.random(), system: true, text: s.text }]));
-    socket?.on('message_deleted', ({ id }) => setMessages(p => p.filter(m => m.id !== id)));
+    socket?.on('message_deleted', ({ id }) => setMessages(p => p.filter(m => String(m.id) !== String(id))));
+    socket?.on('message_reactions', ({ messageId, reactions }) =>
+      setMessages(p => p.map(m => (String(m.id) === String(messageId) ? { ...m, reactions } : m))));
     socket?.on('room_members', setMembersList);
+    socket?.on('presence', setOnlineList);
+    socket?.on('messages_read', ({ by, at }) => {
+      if (by !== user.name) setReadUpTo(prev => Math.max(prev, at));
+    });
+    socket?.on('user_typing', ({ user: name }) => {
+      if (!name || name === user.name) return;
+      setTypingUsers(p => ({ ...p, [name]: Date.now() }));
+      clearTimeout(typingTimers.current[name]);
+      typingTimers.current[name] = setTimeout(() => {
+        setTypingUsers(p => { const c = { ...p }; delete c[name]; return c; });
+      }, 3000);
+    });
     socket?.on('room_locked', ({ wrong }) => {
       Alert.alert('غرفة خاصة 🔒', wrong ? 'كلمة المرور غير صحيحة' : 'هذه الغرفة محمية بكلمة مرور');
       navigation.goBack();
     });
+
+    if (peer) {
+      fetch(`${getBaseUrl()}/users/${encodeURIComponent(peer)}/status`)
+        .then(r => r.json()).then(setPeerStatus).catch(() => {});
+    }
+
     return () => {
       socket?.emit('leave_room');
-      ['room_history', 'new_message', 'system_message', 'message_deleted', 'room_members', 'room_locked'].forEach(e => socket?.off(e));
+      ['room_history','new_message','system_message','message_deleted','message_reactions',
+       'room_members','presence','messages_read','user_typing','room_locked'].forEach(e => socket?.off(e));
     };
   }, []);
+
+  const peerOnline = peer && onlineList.includes(peer);
+  const subtitle = isDM
+    ? (peerOnline ? 'متصل الآن 🟢' : peerStatus?.lastSeen
+        ? 'آخر ظهور ' + new Date(peerStatus.lastSeen).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })
+        : 'غير متصل')
+    : room.name + (room.locked ? ' 🔒' : '');
 
   const buildMsg = (extra) => ({
     user: user.name, userId: user.id,
     replyTo: replyingTo ? { id: replyingTo.id, user: replyingTo.user, text: replyingTo.text } : null,
     ...extra,
   });
+
+  const onChangeText = (t) => {
+    setText(t);
+    const now = Date.now();
+    if (t.trim() && now - lastTypingSent.current > 2000) {
+      lastTypingSent.current = now;
+      socket?.emit('typing', { roomId: room.id });
+    }
+  };
 
   const send = () => {
     if (!text.trim() || !socket) return;
@@ -76,107 +131,48 @@ export default function ChatScreen({ route, navigation }) {
     } catch { Alert.alert('خطأ', 'فشل رفع الملف'); }
   };
 
-  // ===== التسجيل الصوتي =====
   const startRec = async () => {
     try {
-    const p = await requestRecordingPermissionsAsync();
-
-    if (!p.granted) {
-      return Alert.alert(
-        'إذن مرفوض',
-        'اسمح بالوصول للمايكروفون من الإعدادات'
-      );
-    }
-
-    await audioRecorder.prepareToRecordAsync();
-    audioRecorder.record();
-
-    setRec(audioRecorder);
-    setRecSec(0);
-
-    recTimer.current = setInterval(
-      () => setRecSec(s => s + 1),
-      1000
-    );
-  } catch (e) {
-    console.log('Recording error:', e);
-    Alert.alert('خطأ', 'تعذر بدء التسجيل الصوتي');
-  }
-};
-  const cancelRec = async () => {
-  clearInterval(recTimer.current);
-
-  try {
-    await audioRecorder.stop();
-  } catch {}
-
-  setRec(null);
-};
+      const p = await Audio.requestPermissionsAsync();
+      if (!p.granted) return Alert.alert('إذن مرفوض', 'اسمح بالوصول للمايكروفون من الإعدادات');
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setRec(recording);
+      setRecSec(0);
+      recTimer.current = setInterval(() => setRecSec(s => s + 1), 1000);
+    } catch {}
+  };
+  const cancelRec = async () => { clearInterval(recTimer.current); try { await rec?.stopAndUnloadAsync(); } catch {} setRec(null); };
   const sendRec = async () => {
-  clearInterval(recTimer.current);
-
-  try {
-    await audioRecorder.stop();
-
-    const uri = audioRecorder.uri;
-    const dur = recSec;
-
-    setRec(null);
-
-    if (!uri) {
-      return Alert.alert('خطأ', 'لم يتم إنشاء التسجيل الصوتي');
-    }
-
-    const form = new FormData();
-
-    form.append('file', {
-      uri,
-      name: `voice-${Date.now()}.m4a`,
-      type: 'audio/m4a',
-    });
-
-    const up = await (
-      await fetch(`${getBaseUrl()}/upload`, {
-        method: 'POST',
-        body: form,
-      })
-    ).json();
-
-    socket?.emit('send_message', {
-      roomId: room.id,
-      message: buildMsg({
-        text: '',
-        audio: getBaseUrl() + up.url,
-        duration: dur,
-      }),
-    });
-
-    bump('messages');
-    setReplyingTo(null);
-  } catch (e) {
-    console.log('Send recording error:', e);
-    Alert.alert('خطأ', 'فشل إرسال الرسالة الصوتية');
-  }
-};
-
-  // ===== الضغط المطوّل: رد + حذف =====
-  const onLongPress = (item) => {
-    if (item.system) return;
-    const buttons = [{ text: 'رد ↩️', onPress: () => setReplyingTo(item) }];
-    if (isAdmin) buttons.push({
-      text: 'حذف 🗑️', style: 'destructive', onPress: async () => {
-        const key = await AsyncStorage.getItem('adminKey');
-        await fetch(`${getBaseUrl()}/admin/delete-message`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
-          body: JSON.stringify({ id: item.id }),
-        }).catch(() => {});
-      },
-    });
-    buttons.push({ text: 'إلغاء', style: 'cancel' });
-    Alert.alert(item.user, item.text || '🎙️ رسالة صوتية', buttons);
+    clearInterval(recTimer.current);
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI();
+      const dur = recSec;
+      setRec(null);
+      const form = new FormData();
+      form.append('file', { uri, name: `voice-${Date.now()}.m4a`, type: 'audio/m4a' });
+      const up = await (await fetch(`${getBaseUrl()}/upload`, { method: 'POST', body: form })).json();
+      socket?.emit('send_message', { roomId: room.id, message: buildMsg({ text: '', audio: getBaseUrl() + up.url, duration: dur }) });
+      bump('messages');
+      setReplyingTo(null);
+    } catch { Alert.alert('خطأ', 'فشل إرسال الرسالة الصوتية'); }
   };
 
-  // ===== البحث =====
+  const react = (emoji) => {
+    socket?.emit('react_message', { roomId: room.id, messageId: actionMsg.id, emoji });
+    setActionMsg(null);
+  };
+
+  const deleteActionMsg = async () => {
+    const key = await AsyncStorage.getItem('adminKey');
+    await fetch(`${getBaseUrl()}/admin/delete-message`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+      body: JSON.stringify({ id: actionMsg.id }),
+    }).catch(() => {});
+    setActionMsg(null);
+  };
+
   const doSearch = async (q) => {
     setSearchQ(q);
     if (!q.trim()) return setSearchResults(null);
@@ -187,15 +183,17 @@ export default function ChatScreen({ route, navigation }) {
   };
   const closeSearch = () => { setSearchMode(false); setSearchQ(''); setSearchResults(null); };
 
+  const typingNames = Object.keys(typingUsers);
+
   const renderItem = ({ item }) => {
     if (item.system) return <Text style={styles.system}>{item.text}</Text>;
     const mine = item.userId === user.id;
+    const isRead = new Date(item.time).getTime() <= readUpTo;
     return (
-      <TouchableOpacity activeOpacity={0.9} onLongPress={() => onLongPress(item)}
+      <TouchableOpacity activeOpacity={0.9} onLongPress={() => setActionMsg(item)}
         style={[styles.bubble, mine ? styles.mine : styles.other]}>
         {!mine && <Text style={styles.sender}>{item.user}</Text>}
 
-        {/* الرد المقتبس */}
         {item.replyTo && (
           <View style={[styles.quote, { borderColor: mine ? 'rgba(255,255,255,0.5)' : colors.purple }]}>
             <Text style={[styles.quoteUser, { color: mine ? '#fff' : colors.purple }]}>{item.replyTo.user}</Text>
@@ -212,31 +210,58 @@ export default function ChatScreen({ route, navigation }) {
         ) : (
           <Text style={styles.msgText}>{item.text}</Text>
         )}
-        <Text style={styles.time}>{new Date(item.time).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}</Text>
+
+        {/* التفاعلات */}
+        {!!item.reactions && Object.keys(item.reactions).length > 0 && (
+          <View style={styles.reactionsRow}>
+            {Object.entries(item.reactions).map(([emoji, users]) => (
+              <TouchableOpacity key={emoji} style={styles.reactionChip}
+                onPress={() => socket?.emit('react_message', { roomId: room.id, messageId: item.id, emoji })}>
+                <Text style={{ fontSize: 12 }}>{emoji}</Text>
+                <Text style={styles.reactionCount}>{users.length}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.metaRow}>
+          <Text style={styles.time}>{new Date(item.time).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}</Text>
+          {mine && (
+            <Ionicons name="checkmark-done" size={14} color={isRead ? '#7DD3FC' : 'rgba(255,255,255,0.5)'} />
+          )}
+        </View>
       </TouchableOpacity>
     );
   };
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {/* الترويسة */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="arrow-forward" size={24} color={colors.text} /></TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
-          <Text style={styles.title}>دردشة</Text>
-          <Text style={styles.subtitle}>{room.name}{room.locked ? ' 🔒' : ''}</Text>
+          <Text style={styles.title}>{isDM ? room.name : 'دردشة'}</Text>
+          <Text style={[styles.subtitle, peerOnline && { color: colors.success }]}>{subtitle}</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 16 }}>
           <TouchableOpacity onPress={() => (searchMode ? closeSearch() : setSearchMode(true))}>
             <Ionicons name={searchMode ? 'close' : 'search'} size={21} color={colors.textDim} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowMembers(true)}>
-            <Ionicons name="people" size={22} color={colors.textDim} />
-          </TouchableOpacity>
+          {!isDM && (
+            <TouchableOpacity onPress={() => setShowMembers(true)}>
+              <Ionicons name="people" size={22} color={colors.textDim} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* شريط البحث */}
+      {/* شريط "يكتب الآن" */}
+      {typingNames.length > 0 && (
+        <View style={styles.typingBar}>
+          <Text style={styles.typingText}>{typingNames.join('، ')} يكتب الآن</Text>
+          <Text style={styles.typingDots}>💬 ...</Text>
+        </View>
+      )}
+
       {searchMode && (
         <View style={styles.searchBar}>
           {searchResults !== null && (
@@ -250,7 +275,6 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* الرسائل أو نتائج البحث */}
       <FlatList
         ref={listRef}
         data={searchResults !== null ? searchResults : messages}
@@ -258,14 +282,9 @@ export default function ChatScreen({ route, navigation }) {
         renderItem={renderItem}
         contentContainerStyle={{ padding: 14 }}
         onContentSizeChange={() => searchResults === null && listRef.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={
-          searchResults !== null
-            ? <Text style={styles.system}>لا نتائج لـ "{searchQ}" 🔍</Text>
-            : null
-        }
+        ListEmptyComponent={searchResults !== null ? <Text style={styles.system}>لا نتائج لـ "{searchQ}" 🔍</Text> : null}
       />
 
-      {/* شريط الرد */}
       {replyingTo && (
         <View style={styles.replyBar}>
           <TouchableOpacity onPress={() => setReplyingTo(null)}>
@@ -279,7 +298,6 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* الإدخال */}
       {rec ? (
         <View style={styles.inputRow}>
           <TouchableOpacity style={[styles.sendBtn, { backgroundColor: colors.success }]} onPress={sendRec}>
@@ -297,13 +315,37 @@ export default function ChatScreen({ route, navigation }) {
             <Ionicons name="send" size={20} color="#fff" style={{ transform: [{ scaleX: -1 }] }} />
           </TouchableOpacity>
           <TextInput style={styles.input} placeholder="اكتب رسالة..." placeholderTextColor={colors.textDim}
-            value={text} onChangeText={setText} onSubmitEditing={send} textAlign="right" />
+            value={text} onChangeText={onChangeText} onSubmitEditing={send} textAlign="right" />
           <TouchableOpacity onPress={startRec}><Ionicons name="mic" size={22} color={colors.textDim} /></TouchableOpacity>
           <TouchableOpacity onPress={attach}><Ionicons name="attach" size={22} color={colors.textDim} /></TouchableOpacity>
         </View>
       )}
 
-      {/* نافذة الأعضاء المتصلين */}
+      {/* نافذة إجراءات الرسالة (تفاعل/رد/حذف) */}
+      <Modal visible={!!actionMsg} transparent animationType="fade">
+        <TouchableOpacity style={styles.actionBg} activeOpacity={1} onPress={() => setActionMsg(null)}>
+          <View style={styles.actionCard}>
+            <View style={styles.emojiRow}>
+              {EMOJIS.map(e => (
+                <TouchableOpacity key={e} onPress={() => react(e)}>
+                  <Text style={{ fontSize: 26 }}>{e}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.actionDivider} />
+            <TouchableOpacity style={styles.actionBtn} onPress={() => { setReplyingTo(actionMsg); setActionMsg(null); }}>
+              <Text style={styles.actionText}>رد ↩️</Text>
+            </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity style={styles.actionBtn} onPress={deleteActionMsg}>
+                <Text style={[styles.actionText, { color: '#EF4444' }]}>حذف 🗑️</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* نافذة الأعضاء */}
       <Modal visible={showMembers} transparent animationType="slide">
         <View style={styles.modalBg}>
           <View style={styles.modal}>
@@ -337,6 +379,9 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 50, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
   title: { color: colors.text, fontSize: 17, fontWeight: 'bold' },
   subtitle: { color: colors.textDim, fontSize: 12 },
+  typingBar: { flexDirection: 'row', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(59,130,246,0.08)', paddingVertical: 5 },
+  typingText: { color: colors.primary, fontSize: 12, fontWeight: '600' },
+  typingDots: { fontSize: 11 },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   searchInput: { flex: 1, backgroundColor: colors.cardAlt, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, color: colors.text, fontSize: 14 },
   bubble: { maxWidth: '78%', borderRadius: 16, padding: 10, marginBottom: 10 },
@@ -344,11 +389,15 @@ const styles = StyleSheet.create({
   other: { alignSelf: 'flex-start', backgroundColor: colors.cardAlt, borderBottomRightRadius: 4 },
   sender: { color: colors.purple, fontSize: 12, fontWeight: 'bold', marginBottom: 3, textAlign: 'right' },
   msgText: { color: colors.text, fontSize: 15, textAlign: 'right', writingDirection: 'rtl' },
-  time: { color: 'rgba(255,255,255,0.5)', fontSize: 10, marginTop: 4, alignSelf: 'flex-start' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, alignSelf: 'flex-start' },
+  time: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
   system: { color: colors.textDim, fontSize: 12, textAlign: 'center', marginVertical: 6 },
   quote: { borderRightWidth: 3, paddingRight: 8, marginBottom: 6, backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 8, padding: 6 },
   quoteUser: { fontSize: 11, fontWeight: 'bold', textAlign: 'right' },
   quoteText: { color: 'rgba(255,255,255,0.7)', fontSize: 12, textAlign: 'right' },
+  reactionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 },
+  reactionChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 },
+  reactionCount: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
   replyBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.card, paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border },
   replyToUser: { color: colors.purple, fontSize: 12, fontWeight: 'bold' },
   replyToText: { color: colors.textDim, fontSize: 12 },
@@ -359,6 +408,12 @@ const styles = StyleSheet.create({
   recBar: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 22, paddingVertical: 11 },
   redDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
   recText: { color: '#EF4444', fontSize: 14, fontWeight: '600' },
+  actionBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  actionCard: { backgroundColor: colors.card, borderRadius: 20, padding: 16, width: 280, borderWidth: 1, borderColor: colors.border },
+  emojiRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 6 },
+  actionDivider: { height: 1, backgroundColor: colors.border, marginVertical: 10 },
+  actionBtn: { paddingVertical: 10, alignItems: 'center' },
+  actionText: { color: colors.text, fontSize: 15, fontWeight: '600' },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modal: { backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '60%' },
   modalTitle: { color: colors.text, fontSize: 17, fontWeight: 'bold', marginBottom: 14, textAlign: 'center' },

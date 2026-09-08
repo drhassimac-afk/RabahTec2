@@ -25,6 +25,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false
+}));
+
+app.use('/upload', rateLimit({
+  windowMs: 60 * 1000,
+  max: 20
+}));
+
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ MongoDB Atlas متصل بنجاح'))
   .catch(err => console.error('❌ MongoDB connection error:', err.message));
@@ -88,6 +105,22 @@ app.post('/users/register', async (req, res) => {
   }
 });
 
+
+app.get('/users/:username/status', async (req, res) => {
+  const { username } = req.params;
+  let lastSeen = null;
+
+  if (dbReady()) {
+    const u = await User.findOne({ username }).lean();
+    lastSeen = u?.lastSeen || null;
+  }
+
+  res.json({
+    online: onlineUsers.has(username),
+    lastSeen
+  });
+});
+
 app.get('/users/:id', async (req, res) => {
   try {
     const user = await User.findOne({ id: req.params.id }).lean();
@@ -114,6 +147,9 @@ app.use('/uploads', express.static(UPLOADS));
 
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
+
+// المستخدمون المتصلون حاليًا: username -> socketId
+const onlineUsers = new Map(); // username -> socketId
 
 // ===== بيانات (في الذاكرة — يمكن ربط MongoDB لاحقاً) =====
 const rooms = [
@@ -362,7 +398,12 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) =>
     cb(null, Date.now() + '-' + Buffer.from(file.originalname, 'latin1').toString('utf8')),
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 100 * 1024 * 1024
+  }
+});
 
 app.post('/upload', upload.single('file'), (req, res) => {
   const f = req.file;
@@ -440,6 +481,7 @@ const messageSchema = new mongoose.Schema({
     user: { type: String, default: null },
     text: { type: String, default: null }
   },
+  reactions: { type: Object, default: {} },
   time: { type: Date, default: Date.now }
 });
 
@@ -728,6 +770,7 @@ app.get('/leaderboard', async (req, res) => {
 
 io.on('connection', socket => {
   // ===== تسجيل المستخدم والحظر =====
+  console.log('🔌 SOCKET CLIENT CONNECTED:', socket.id);
   socket.on('register', async ({ username }) => {
     if (!username) return;
 
@@ -737,6 +780,10 @@ io.on('connection', socket => {
     }
 
     socket.join('user-' + username);
+    socket.data.username = username;
+
+    onlineUsers.set(username, socket.id);
+    io.emit('presence', Array.from(onlineUsers.keys()));
 
     if (dbReady()) {
       try {
@@ -750,6 +797,10 @@ io.on('connection', socket => {
         );
       } catch {}
     }
+  });
+
+  socket.on('get_presence', () => {
+    socket.emit('presence', Array.from(onlineUsers.keys()));
   });
 
   socket.on('join_room', async ({ roomId, user, password }) => {
@@ -768,7 +819,7 @@ io.on('connection', socket => {
     }
 
     socket.join(roomId);
-    socket.data = { roomId, user };
+    socket.data = { ...socket.data, roomId, user };
 
     if (!members[roomId]) members[roomId] = new Map();
     members[roomId].set(user.id, user.name);
@@ -793,6 +844,7 @@ io.on('connection', socket => {
             audio: d.audio,
             duration: d.duration,
             replyTo: d.replyTo || null,
+            reactions: d.reactions || {},
             time: d.time
           }))
         );
@@ -809,6 +861,8 @@ io.on('connection', socket => {
   });
 
   socket.on('send_message', async ({ roomId, message }) => {
+    if (message.text && message.text.length > 2000) message.text = message.text.slice(0, 2000);
+
     const msg = {
       id: Date.now() + '-' + socket.id,
       ...message,
@@ -942,7 +996,82 @@ io.on('connection', socket => {
     }
   };
   socket.on('leave_room', leave);
-  socket.on('disconnect', leave);
+  // ===== يكتب الآن... ⌨️ =====
+  socket.on('typing', ({ roomId }) => {
+    const name = socket.data?.user?.name || socket.data?.username;
+    if (name) socket.to(roomId).emit('user_typing', { roomId, user: name });
+  });
+
+  // ===== علامات القراءة ✓✓ =====
+  socket.on('mark_read', ({ roomId }) => {
+    const name = socket.data?.user?.name || socket.data?.username;
+    if (name) socket.to(roomId).emit('messages_read', {
+      roomId,
+      by: name,
+      at: Date.now()
+    });
+  });
+
+  // ===== التفاعلات ❤️ =====
+  socket.on('react_message', async ({ roomId, messageId, emoji }) => {
+    const username = socket.data?.user?.name || socket.data?.username;
+    if (!username || !messageId) return;
+
+    let reactions = {};
+
+    const toggle = (obj) => {
+      obj[emoji] = obj[emoji] || [];
+
+      if (obj[emoji].includes(username)) {
+        obj[emoji] = obj[emoji].filter(u => u !== username);
+        if (!obj[emoji].length) delete obj[emoji];
+      } else {
+        obj[emoji].push(username);
+      }
+
+      return obj;
+    };
+
+    if (dbReady() && !String(messageId).includes('-')) {
+      try {
+        const msg = await Message.findById(messageId);
+
+        if (msg) {
+          msg.reactions = toggle(msg.reactions || {});
+          msg.markModified('reactions');
+          await msg.save();
+          reactions = msg.reactions;
+        }
+      } catch {}
+    } else {
+      const m = (history[roomId] || [])
+        .find(x => String(x.id) === String(messageId));
+
+      if (m) reactions = toggle(m.reactions = m.reactions || {});
+    }
+
+    io.to(roomId).emit('message_reactions', {
+      messageId,
+      reactions
+    });
+  });
+
+  socket.on('disconnect', async () => {
+    leave();
+    const uname = socket.data?.username;
+
+    if (uname && onlineUsers.get(uname) === socket.id) {
+      onlineUsers.delete(uname);
+      io.emit('presence', Array.from(onlineUsers.keys()));
+
+      if (dbReady()) {
+        await User.updateOne(
+          { username: uname },
+          { $set: { lastSeen: new Date() } }
+        ).catch(() => {});
+      }
+    }
+  });
 });
 
 const PORT = process.env.PORT || 3000;

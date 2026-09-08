@@ -104,7 +104,7 @@ export default function App() {
     <AppContext.Provider value={{ user, setUser, server }}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
       <NavigationContainer theme={navTheme}>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Navigator initialRouteName="Tabs" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
           <Stack.Screen name="Tabs" component={Tabs} />
           <Stack.Screen name="Rooms" component={RoomsScreen} />
