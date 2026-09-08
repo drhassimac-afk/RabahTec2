@@ -1,3 +1,4 @@
+import "react-native-gesture-handler";
 import { registerRootComponent } from 'expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { applyTheme } from './src/theme';
