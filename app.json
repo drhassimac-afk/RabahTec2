@@ -27,7 +27,9 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WAKE_LOCK",
-        "android.permission.BLUETOOTH"
+        "android.permission.BLUETOOTH",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -58,8 +60,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "cd585f21-4cf1-4a0a-a961-f6143433bbc5"
+        "projectId": "388c960a-aad5-4c03-a5e7-d28e2b626bba"
       }
-    }
+    },
+    "owner": "rabahdj"
   }
 }
