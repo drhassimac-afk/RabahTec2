@@ -1,56 +1,9 @@
-import React, { useContext, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Dimensions } from 'react-native';
-import { LiveKitRoom, useTracks, isTrackReference, VideoTrack, registerGlobals } from '@livekit/react-native';
-import { Track } from 'livekit-client';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
-import { getBaseUrl } from '../socket';
-import { AppContext } from '../../App';
-
-registerGlobals();
-const { width } = Dimensions.get('window');
-
-function Stage() {
-  const tracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
-
-  return (
-    <FlatList
-      data={tracks}
-      keyExtractor={(t, i) => String(i)}
-      numColumns={tracks.length > 1 ? 2 : 1}
-      renderItem={({ item }) =>
-        isTrackReference(item) ? (
-          <VideoTrack
-            trackRef={item}
-            style={{
-              width: tracks.length > 1 ? width / 2 - 6 : width - 8,
-              height: tracks.length > 1 ? 220 : 420,
-              margin: 4,
-              borderRadius: 14,
-            }}
-          />
-        ) : null
-      }
-    />
-  );
-}
 
 export default function LiveCameraScreen({ navigation }) {
-  const { user } = useContext(AppContext);
-  const [cfg, setCfg] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!user?.name) return;
-
-    fetch(
-      `${getBaseUrl()}/livekit-token?identity=${encodeURIComponent(user.name)}&room=rabah-live`
-    )
-      .then(r => r.json())
-      .then(d => (d.token ? setCfg(d) : setError(d.error || 'غير مفعّل')))
-      .catch(() => setError('تعذر الاتصال بالسيرفر'));
-  }, [user?.name]);
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -64,34 +17,17 @@ export default function LiveCameraScreen({ navigation }) {
         </View>
       </View>
 
-      {error && (
-        <View style={styles.center}>
-          <Ionicons name="videocam-off" size={56} color={colors.textDim} />
-          <Text style={styles.errorText}>{error}</Text>
-          <Text style={styles.hint}>
-            أضف مفاتيح LiveKit في server/.env ثم أعد تشغيل السيرفر
-          </Text>
+      <View style={styles.center}>
+        <View style={styles.iconCircle}>
+          <Ionicons name="videocam" size={54} color={colors.primary} />
         </View>
-      )}
 
-      {!cfg && !error && (
-        <View style={styles.center}>
-          <Text style={{ color: colors.textDim }}>جارٍ الاتصال...</Text>
-        </View>
-      )}
+        <Text style={styles.title}>بث الكاميرا المباشر 📹</Text>
 
-      {cfg && (
-        <LiveKitRoom
-          serverUrl={cfg.url}
-          token={cfg.token}
-          connect
-          audio
-          video
-          style={{ flex: 1 }}
-        >
-          <Stage />
-        </LiveKitRoom>
-      )}
+        <Text style={styles.text}>
+          هذه الميزة قيد التفعيل وستتوفر في التحديث القادم
+        </Text>
+      </View>
     </View>
   );
 }
@@ -133,18 +69,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
-    padding: 30,
+    gap: 16,
+    padding: 32,
   },
-  errorText: {
+  iconCircle: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(59,130,246,0.1)',
+    borderWidth: 2,
+    borderColor: 'rgba(59,130,246,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  title: {
     color: colors.text,
-    fontSize: 15,
-    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
-  hint: {
+  text: {
     color: colors.textDim,
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
   },
 });

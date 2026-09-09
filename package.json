@@ -1,13 +1,9 @@
 {
   "name": "rabahtec2",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "node_modules/expo/AppEntry.js",
   "dependencies": {
-    "@config-plugins/react-native-webrtc": "^15.0.2",
     "@expo/vector-icons": "^15.0.2",
-    "@livekit/react-native": "^2.12.0",
-    "@livekit/react-native-expo-plugin": "^1.0.2",
-    "@livekit/react-native-webrtc": "^144.1.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.18.18",
     "@react-navigation/native": "^7.3.18",
@@ -28,7 +24,6 @@
     "expo-status-bar": "~57.0.1",
     "expo-updates": "~57.0.21",
     "expo-video": "~57.0.3",
-    "livekit-client": "^2.22.2",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-gesture-handler": "~2.32.0",
