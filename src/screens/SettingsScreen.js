@@ -1,7 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch, Alert, DevSettings } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Updates from 'expo-updates';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, accents } from '../theme';
 import { AppContext } from '../../App';
@@ -25,7 +24,7 @@ export default function SettingsScreen({ navigation }) {
   const toggle = async (key, val, setter) => { setter(val); await AsyncStorage.setItem(key, val ? '1' : '0'); };
 
   const reloadApp = async () => {
-    try { await Updates.reloadAsync(); }
+    try { DevSettings.reload(); }
     catch { try { DevSettings.reload(); } catch {} }
   };
 
