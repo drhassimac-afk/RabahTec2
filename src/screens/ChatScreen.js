@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Linking, Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, RecordingPresets, AudioModule, setAudioModeAsync } from 'expo-audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 import { getSocket, getBaseUrl } from '../socket';
@@ -18,6 +18,7 @@ export default function ChatScreen({ route, navigation }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [rec, setRec] = useState(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [recSec, setRecSec] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
@@ -133,21 +134,22 @@ export default function ChatScreen({ route, navigation }) {
 
   const startRec = async () => {
     try {
-      const p = await Audio.requestPermissionsAsync();
+      const p = await AudioModule.requestRecordingPermissionsAsync();
       if (!p.granted) return Alert.alert('إذن مرفوض', 'اسمح بالوصول للمايكروفون من الإعدادات');
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      setRec(recording);
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+      setRec(audioRecorder);
       setRecSec(0);
       recTimer.current = setInterval(() => setRecSec(s => s + 1), 1000);
     } catch {}
   };
-  const cancelRec = async () => { clearInterval(recTimer.current); try { await rec?.stopAndUnloadAsync(); } catch {} setRec(null); };
+  const cancelRec = async () => { clearInterval(recTimer.current); try { await audioRecorder.stop(); } catch {} setRec(null); };
   const sendRec = async () => {
     clearInterval(recTimer.current);
     try {
-      await rec.stopAndUnloadAsync();
-      const uri = rec.getURI();
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
       const dur = recSec;
       setRec(null);
       const form = new FormData();
