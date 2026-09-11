@@ -1,4 +1,11 @@
+import * as Sentry from '@sentry/react-native';
 import 'react-native-gesture-handler';
+
+Sentry.init({
+  dsn: 'https://b2f2daf2434fcb9ba10ba68058ed06d1@o4512066775154688.ingest.de.sentry.io/4512066798026832',
+  debug: true,
+  tracesSampleRate: 1.0,
+});
 import React, { useEffect, useState, createContext } from 'react';
 import { StatusBar } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
@@ -49,7 +56,7 @@ function Tabs() {
   );
 }
 
-export default function App() {
+function App() {
   const [user, setUser] = useState(null);
   const [server, setServer] = useState({ connected: false, url: '' });
 
@@ -122,3 +129,5 @@ export default function App() {
     </AppContext.Provider>
   );
 }
+
+export default Sentry.wrap(App);
