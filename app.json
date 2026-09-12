@@ -70,6 +70,11 @@
     "owner": "rabahdj",
     "runtimeVersion": {
       "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/388c960a-aad5-4c03-a5e7-d28e2b626bba",
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "WIFI_ONLY"
     }
   }
 }
