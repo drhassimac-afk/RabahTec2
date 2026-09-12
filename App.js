@@ -24,6 +24,7 @@ import AdminScreen from './src/screens/AdminScreen';
 import { Alert } from 'react-native';
 import { notify } from './src/notifications';
 import LeaderboardScreen from './src/screens/LeaderboardScreen';
+import { DrawerProvider } from './src/components/SideMenu';
 
 export const AppContext = createContext(null);
 const Stack = createNativeStackNavigator();
@@ -103,6 +104,7 @@ export default function App() {
   if (!user) return null;
   return (
     <AppContext.Provider value={{ user, setUser, server }}>
+      <DrawerProvider>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
       <NavigationContainer theme={navTheme}>
         <Stack.Navigator initialRouteName="Tabs" screenOptions={{ headerShown: false }}>
@@ -119,6 +121,7 @@ export default function App() {
           <Stack.Screen name="Admin" component={AdminScreen} />
         </Stack.Navigator>
       </NavigationContainer>
+      </DrawerProvider>
     </AppContext.Provider>
   );
 }
