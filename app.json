@@ -57,10 +57,19 @@
           "imageWidth": 200
         }
       ],
+      "@livekit/react-native-expo-plugin",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "يحتاج التطبيق الوصول للكاميرا من أجل البث المباشر",
+          "microphonePermission": "يحتاج التطبيق الوصول للمايكروفون من أجل البث المباشر والرسائل الصوتية"
+        }
+      ],
       "expo-audio",
       "expo-video",
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      "@config-plugins/react-native-webrtc"
     ],
     "extra": {
       "eas": {
